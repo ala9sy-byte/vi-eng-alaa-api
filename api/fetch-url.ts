@@ -7,9 +7,7 @@ function normalizeUrl(input: string, base?: string) {
   try {
     return new URL(input).toString();
   } catch {
-    if (base) {
-      return new URL(input, base).toString();
-    }
+    if (base) return new URL(input, base).toString();
     throw new Error("Invalid URL");
   }
 }
@@ -64,10 +62,8 @@ function extractCandidatePageLinks(html: string, baseUrl: string): string[] {
     while ((match = pattern.exec(html)) !== null) {
       const raw = match[1];
       if (!raw) continue;
-
       try {
-        const abs = normalizeUrl(raw, baseUrl);
-        out.push(abs);
+        out.push(normalizeUrl(raw, baseUrl));
       } catch {}
     }
   }
@@ -100,8 +96,8 @@ async function fetchHtml(targetUrl: string) {
       Pragma: "no-cache",
       Referer: new URL(targetUrl).origin,
     },
-    timeout: 20000,
-    maxRedirects: 5,
+    timeout: 8000,
+    maxRedirects: 3,
   });
 
   return typeof response.data === "string"
@@ -115,47 +111,43 @@ async function geminiExtractLinks(html: string, apiKey: string) {
   const geminiResponse = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: `
-Extract all useful video-related URLs from this HTML.
+Extract useful video-related URLs from this HTML.
 
-Priorities:
-1. Final direct playable links ending with .m3u8, .mp4, .mpd
-2. iframe/player/embed links if direct links are not found
-3. jwplayer/videojs/file/source/src URLs
-4. Return only URLs, one per line
-5. If nothing exists, return NO_LINKS
+Priority:
+1. direct .m3u8
+2. direct .mp4
+3. direct .mpd
+4. iframe/embed/player URLs only if no direct links exist
+
+Return only URLs, one per line.
+If none exist, return NO_LINKS.
 
 HTML:
-${html.slice(0, 120000)}
+${html.slice(0, 40000)}
     `,
   });
 
   const text = geminiResponse.text || "";
   const urlRegex = /(https?:\/\/[^\s"'`<>]+)/g;
 
-  const links = Array.from(
-    new Set((text.match(urlRegex) || []).map((x) => x.trim()))
-  );
-
-  return { rawText: text, links };
+  return Array.from(new Set((text.match(urlRegex) || []).map((x) => x.trim())));
 }
 
 async function resolveLinksDeep(startUrl: string, apiKey?: string) {
   const visited = new Set<string>();
   const queue: { url: string; depth: number }[] = [{ url: startUrl, depth: 0 }];
   const finalMediaLinks: string[] = [];
-  const crawledPages: string[] = [];
 
   while (queue.length > 0) {
     const current = queue.shift()!;
     if (visited.has(current.url)) continue;
-    if (current.depth > 3) continue;
+    if (current.depth > 1) continue;
 
     visited.add(current.url);
 
     let html = "";
     try {
       html = await fetchHtml(current.url);
-      crawledPages.push(current.url);
     } catch {
       continue;
     }
@@ -168,10 +160,10 @@ async function resolveLinksDeep(startUrl: string, apiKey?: string) {
 
     let candidates = extractCandidatePageLinks(html, current.url);
 
-    if (!candidates.length && apiKey) {
+    if (!finalMediaLinks.length && !candidates.length && apiKey && current.depth === 0) {
       try {
-        const gemini = await geminiExtractLinks(html, apiKey);
-        candidates.push(...gemini.links);
+        const geminiLinks = await geminiExtractLinks(html, apiKey);
+        candidates.push(...geminiLinks);
       } catch {}
     }
 
@@ -179,7 +171,6 @@ async function resolveLinksDeep(startUrl: string, apiKey?: string) {
 
     for (const link of candidates) {
       const lower = link.toLowerCase();
-
       if (
         lower.includes(".m3u8") ||
         lower.includes(".mp4") ||
@@ -192,10 +183,7 @@ async function resolveLinksDeep(startUrl: string, apiKey?: string) {
     }
   }
 
-  return {
-    finalMediaLinks: unique(finalMediaLinks),
-    crawledPages: unique(crawledPages),
-  };
+  return unique(finalMediaLinks);
 }
 
 export default async function handler(req: any, res: any) {
@@ -221,19 +209,11 @@ export default async function handler(req: any, res: any) {
     const normalizedUrl = normalizeUrl(url.trim());
     const apiKey = process.env.GEMINI_API_KEY;
 
-    const result = await resolveLinksDeep(normalizedUrl, apiKey);
-
-    if (!result.finalMediaLinks.length) {
-      return res.status(200).json({
-        extractedLinks: [],
-        crawledPages: result.crawledPages,
-        message: "NO_LINKS_FOUND",
-      });
-    }
+    const extractedLinks = await resolveLinksDeep(normalizedUrl, apiKey);
 
     return res.status(200).json({
-      extractedLinks: result.finalMediaLinks,
-      crawledPages: result.crawledPages,
+      extractedLinks,
+      message: extractedLinks.length ? "OK" : "NO_LINKS_FOUND",
     });
   } catch (error: any) {
     return res.status(500).json({
