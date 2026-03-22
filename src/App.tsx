@@ -43,7 +43,7 @@ export default function App() {
     setResolvingIndex(index);
     try {
       // 1. Fetch the player page content
-      const fetchResponse = await fetch("https://REPLACE-ME.vercel.app/api/fetch-url", {
+      const fetchResponse = await fetch("https://vi-eng-alaa-api.vercel.app/api/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: link.url }),
@@ -116,7 +116,7 @@ export default function App() {
       }
 
       // 1. Fetch HTML via backend proxy
-      const fetchResponse = await fetch("https://REPLACE-ME.vercel.app/api/fetch-url", {
+      const fetchResponse = await fetch("https://vi-eng-alaa-api.vercel.app/api/fetch-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
