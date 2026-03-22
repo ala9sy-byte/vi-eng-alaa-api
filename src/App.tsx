@@ -14,17 +14,27 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+interface ApiLink {
+  url: string;
+  host: string;
+  label: string;
+  sourceType: "direct" | "iframe" | "player" | "embed" | "watch" | "file" | "src" | "unknown";
+  isDirect: boolean;
+  depth: number;
+}
+
 interface VideoLink {
   title: string;
   url: string;
   proxyUrl?: string;
-  quality?: string;
   type: "stream" | "download";
   provider?: string;
-  season?: string;
-  episode?: string;
+  sourceType?: string;
+  depth?: number;
   isResolved?: boolean;
 }
+
+const API_URL = "https://vi-eng-alaa-api.vercel.app/api/fetch-url";
 
 export default function App() {
   const [url, setUrl] = useState("");
@@ -34,18 +44,27 @@ export default function App() {
   const [resolvingIndex, setResolvingIndex] = useState<number | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
+  const mapApiLink = (item: ApiLink, index: number): VideoLink => ({
+    title: item.label || `رابط ${index + 1}`,
+    url: item.url,
+    proxyUrl: item.url,
+    type: "stream",
+    provider: item.host || "unknown",
+    sourceType: item.sourceType,
+    depth: item.depth,
+    isResolved: item.isDirect,
+  });
+
   const resolveFinalLink = async (link: VideoLink, index: number) => {
     setResolvingIndex(index);
+    setError(null);
 
     try {
-      const fetchResponse = await fetch(
-        "https://vi-eng-alaa-api.vercel.app/api/fetch-url",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: link.url }),
-        }
-      );
+      const fetchResponse = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: link.url }),
+      });
 
       if (!fetchResponse.ok) {
         const errorData = await fetchResponse.json().catch(() => null);
@@ -53,13 +72,12 @@ export default function App() {
       }
 
       const data = await fetchResponse.json();
-      const extractedLinks: string[] = data.extractedLinks || [];
-      const candidateLinks: string[] = data.candidateLinks || [];
+      const extractedLinks: ApiLink[] = data.extractedLinks || [];
+      const candidateLinks: ApiLink[] = data.candidateLinks || [];
 
-      const finalUrl = extractedLinks[0] || candidateLinks[0];
-
-      if (!finalUrl) {
-        throw new Error("لم يتم العثور على رابط فيديو مباشر أو رابط وسيط صالح.");
+      const best = extractedLinks[0] || candidateLinks[0];
+      if (!best) {
+        throw new Error("لم يتم العثور على رابط مباشر أو رابط وسيط أفضل.");
       }
 
       setLinks((prev) =>
@@ -67,16 +85,20 @@ export default function App() {
           i === index
             ? {
                 ...item,
-                url: finalUrl,
-                proxyUrl: finalUrl,
-                isResolved: extractedLinks.length > 0,
+                title: best.label || item.title,
+                url: best.url,
+                proxyUrl: best.url,
+                provider: best.host,
+                sourceType: best.sourceType,
+                depth: best.depth,
+                isResolved: best.isDirect,
               }
             : item
         )
       );
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "حدث خطأ أثناء استخراج الرابط النهائي.");
+      setError(err.message || "حدث خطأ أثناء محاولة استخراج الرابط المباشر.");
     } finally {
       setResolvingIndex(null);
     }
@@ -90,39 +112,11 @@ export default function App() {
     setLinks([]);
 
     try {
-      const isDirectPlayer =
-        url.includes("govid.live") ||
-        url.includes("vidsharing") ||
-        url.includes("uqload") ||
-        url.includes("upstream");
-
-      if (isDirectPlayer) {
-        const dummyLink: VideoLink = {
-          title: "رابط مشغل مباشر",
-          url,
-          type: "stream",
-          provider: (() => {
-            try {
-              return new URL(url).hostname.replace("www.", "");
-            } catch {
-              return "unknown";
-            }
-          })(),
-        };
-
-        setLinks([dummyLink]);
-        await resolveFinalLink(dummyLink, 0);
-        return;
-      }
-
-      const fetchResponse = await fetch(
-        "https://vi-eng-alaa-api.vercel.app/api/fetch-url",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        }
-      );
+      const fetchResponse = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
 
       if (!fetchResponse.ok) {
         const errorData = await fetchResponse.json().catch(() => null);
@@ -130,44 +124,17 @@ export default function App() {
       }
 
       const data = await fetchResponse.json();
-      const extractedLinks: string[] = data.extractedLinks || [];
-      const candidateLinks: string[] = data.candidateLinks || [];
+      const extractedLinks: ApiLink[] = data.extractedLinks || [];
+      const candidateLinks: ApiLink[] = data.candidateLinks || [];
 
       if (!extractedLinks.length && !candidateLinks.length) {
         throw new Error("لم يتم العثور على روابط فيديو مباشرة أو روابط وسيطة.");
       }
 
-      const directParsed: VideoLink[] = extractedLinks.map((item, idx) => ({
-        title: `رابط مباشر ${idx + 1}`,
-        url: item,
-        proxyUrl: item,
-        type: "stream",
-        provider: (() => {
-          try {
-            return new URL(item).hostname.replace("www.", "");
-          } catch {
-            return "unknown";
-          }
-        })(),
-        isResolved: true,
-      }));
-
-      const candidateParsed: VideoLink[] = candidateLinks
-        .filter((item) => !extractedLinks.includes(item))
-        .map((item, idx) => ({
-          title: `رابط وسيط ${idx + 1}`,
-          url: item,
-          proxyUrl: item,
-          type: "stream",
-          provider: (() => {
-            try {
-              return new URL(item).hostname.replace("www.", "");
-            } catch {
-              return "unknown";
-            }
-          })(),
-          isResolved: false,
-        }));
+      const directParsed = extractedLinks.map(mapApiLink);
+      const candidateParsed = candidateLinks
+        .filter((item) => !extractedLinks.some((d: ApiLink) => d.url === item.url))
+        .map(mapApiLink);
 
       setLinks([...directParsed, ...candidateParsed]);
     } catch (err: any) {
@@ -226,8 +193,7 @@ export default function App() {
             transition={{ delay: 0.1 }}
             className="text-white/60 text-lg mb-10 max-w-2xl mx-auto"
           >
-            ضع رابط الفيلم أو المسلسل للحصول على روابط مشاهدة وتحميل نظيفة
-            وبدون إعلانات.
+            ضع رابط الفيلم أو المسلسل للحصول على روابط مشاهدة وتحميل نظيفة وبدون إعلانات.
           </motion.p>
 
           <motion.div
@@ -253,11 +219,7 @@ export default function App() {
                   disabled={loading || !url}
                   className="bg-emerald-500 hover:bg-emerald-400 disabled:bg-white/10 disabled:text-white/20 text-black font-bold px-8 py-3 rounded-xl transition-all flex items-center gap-2 min-w-[120px] justify-center"
                 >
-                  {loading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    "استخراج"
-                  )}
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "استخراج"}
                 </button>
               </div>
             </div>
@@ -274,14 +236,10 @@ export default function App() {
             >
               <AlertCircle className="w-6 h-6 text-red-500 shrink-0" />
               <div>
-                <h3 className="font-bold text-red-500 mb-1 text-right">
-                  فشل الاستخراج
-                </h3>
+                <h3 className="font-bold text-red-500 mb-1 text-right">فشل الاستخراج</h3>
                 <p className="text-white/60 text-sm text-right">{error}</p>
                 <div className="mt-4 p-3 bg-black/20 rounded-lg text-xs text-white/40 flex items-center gap-2 justify-end">
-                  <span>
-                    ملاحظة: بعض المواقع تستخدم حماية تمنع الوصول التلقائي.
-                  </span>
+                  <span>ملاحظة: بعض المواقع تستخدم حماية أو توليد JavaScript معقد.</span>
                   <Info className="w-4 h-4" />
                 </div>
               </div>
@@ -307,22 +265,37 @@ export default function App() {
                     key={index}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
+                    transition={{ delay: index * 0.04 }}
                     className="group bg-white/5 border border-white/10 rounded-2xl p-5 hover:border-emerald-500/30 hover:bg-white/[0.08] transition-all"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-500/20 text-blue-400">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                            link.isResolved
+                              ? "bg-emerald-500/20 text-emerald-400"
+                              : "bg-yellow-500/20 text-yellow-400"
+                          }`}
+                        >
                           <Play className="w-5 h-5" />
                         </div>
+
                         <div>
-                          <h4 className="font-bold text-white/90 line-clamp-1">
-                            {link.title}
-                          </h4>
-                          <div className="flex items-center gap-2 text-xs text-white/40 mt-1">
+                          <h4 className="font-bold text-white/90 line-clamp-1">{link.title}</h4>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-white/40 mt-1">
                             {link.provider && (
                               <span className="bg-white/5 px-2 py-0.5 rounded uppercase tracking-wider">
                                 {link.provider}
+                              </span>
+                            )}
+                            {link.sourceType && (
+                              <span className="bg-white/5 px-2 py-0.5 rounded">
+                                {link.sourceType}
+                              </span>
+                            )}
+                            {typeof link.depth === "number" && (
+                              <span className="bg-white/5 px-2 py-0.5 rounded">
+                                depth {link.depth}
                               </span>
                             )}
                             {link.isResolved ? (
@@ -434,7 +407,7 @@ export default function App() {
                 <Loader2 className="w-20 h-20 text-emerald-500 animate-spin relative z-10" />
               </div>
               <h3 className="text-xl font-bold mb-2">جاري تحليل محتوى الصفحة...</h3>
-              <p className="text-white/40">نبحث عن الروابط المباشرة والوسيطة.</p>
+              <p className="text-white/40">نبحث عن روابط مباشرة وروابط وسيطة مهمة فقط.</p>
             </motion.div>
           )}
         </AnimatePresence>

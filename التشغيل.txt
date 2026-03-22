@@ -26,6 +26,13 @@ npx cap copy android
 npx cap sync android
 
 
+--------------
+
+git add .
+git commit -m "Reduce candidate links and show details"
+git push
+
+
 
 
 npm install @google/generative-ai@latest
