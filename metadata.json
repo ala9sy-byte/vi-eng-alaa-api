@@ -1,0 +1,5 @@
+{
+  "name": "Clean Video Link Extractor",
+  "description": "Extract direct video links from movie sites without ads or pop-ups.",
+  "requestFramePermissions": []
+}

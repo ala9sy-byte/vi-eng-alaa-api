@@ -1,0 +1,99 @@
+
+نفتح المجلد بال
+vs
+.........
+بعدها نفتح
+الترمينال من الاختصار
+ctrl+shift+`
+بعدها بالترمينال
+
+npm install
+
+ثم
+
+npm run dev
+
+npm rum build
+
+npx cap sync
+----------------------------------------------
+npx cap copy android
+------------
+npm run build
+
+npx cap copy android
+
+npx cap sync android
+
+
+
+
+npm install @google/generative-ai@latest
+
+اكواد 
+API
+الموجودة 
+للجميناي 
+والاكسل شيت بعد رفع التطبيق بالاكسل شيت 
+مهم جدا للاتصال بين التطبيق والاكسل شيت
+
+تضاف في ملف 
+.env.local
+:
+
+GEMINI_API_KEY=AIzaSyBMSJRmPp51R6iCUE9JNmqv9Bc-Hgr6JIw
+VITE_SHEETS_API_URL=https://script.google.com/macros/s/AKfycbz1I59gYutAeMyT4keNQfzpVMRqS-tZAWfaU7vlM4zQ_YoTOiZzHITEMSjEwyqzKOk/exec
+
+
+--------------------------
+ويتم تغير 
+رابط 
+exec
+في ملف 
+App.tsx
+
+....................
+
+ويتم تغير 
+رابط 
+exec
+في ملف 
+financeService.ts
+---------------------
+
+ربطت رفع الصور بموقع 
+https://console.cloudinary.com/
+سجلت دخولي بايميل 
+ala9sygmail.com
+وقمت برفع 
+
+وكتابة 
+البريسيت ب 2 موقع
+
+const CLOUDINARY_CLOUD_NAME = "deela4brg";
+const CLOUDINARY_UPLOAD_PRESET = "deela4brg";
+
+في ملف 
+LinkManager.tsx
+..............
+و كود 
+
+  const CLOUD_NAME = "deela4brg";
+  const PRESET = "deela4brg";
+ملف
+financeService.ts
+
+..................
+
+create a video using seediance 2.0 10 seconds 
+
+
+...
+
+مفتاح الخرائط 
+
+AIzaSyDdxzkmQzC6Rgq6gttXGFMf9ZCxekiMXBQ
+
+-------
+
+
