@@ -62,6 +62,7 @@ function extractCandidatePageLinks(html: string, baseUrl: string): string[] {
     while ((match = pattern.exec(html)) !== null) {
       const raw = match[1];
       if (!raw) continue;
+
       try {
         out.push(normalizeUrl(raw, baseUrl));
       } catch {}
@@ -137,6 +138,7 @@ async function resolveLinksDeep(startUrl: string, apiKey?: string) {
   const visited = new Set<string>();
   const queue: { url: string; depth: number }[] = [{ url: startUrl, depth: 0 }];
   const finalMediaLinks: string[] = [];
+  const candidateLinks: string[] = [];
 
   while (queue.length > 0) {
     const current = queue.shift()!;
@@ -168,9 +170,11 @@ async function resolveLinksDeep(startUrl: string, apiKey?: string) {
     }
 
     candidates = unique(candidates);
+    candidateLinks.push(...candidates);
 
     for (const link of candidates) {
       const lower = link.toLowerCase();
+
       if (
         lower.includes(".m3u8") ||
         lower.includes(".mp4") ||
@@ -183,7 +187,10 @@ async function resolveLinksDeep(startUrl: string, apiKey?: string) {
     }
   }
 
-  return unique(finalMediaLinks);
+  return {
+    directLinks: unique(finalMediaLinks),
+    candidateLinks: unique(candidateLinks),
+  };
 }
 
 export default async function handler(req: any, res: any) {
@@ -209,11 +216,16 @@ export default async function handler(req: any, res: any) {
     const normalizedUrl = normalizeUrl(url.trim());
     const apiKey = process.env.GEMINI_API_KEY;
 
-    const extractedLinks = await resolveLinksDeep(normalizedUrl, apiKey);
+    const result = await resolveLinksDeep(normalizedUrl, apiKey);
 
     return res.status(200).json({
-      extractedLinks,
-      message: extractedLinks.length ? "OK" : "NO_LINKS_FOUND",
+      extractedLinks: result.directLinks,
+      candidateLinks: result.candidateLinks,
+      message: result.directLinks.length
+        ? "DIRECT_LINKS_FOUND"
+        : result.candidateLinks.length
+        ? "CANDIDATE_LINKS_FOUND"
+        : "NO_LINKS_FOUND",
     });
   } catch (error: any) {
     return res.status(500).json({

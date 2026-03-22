@@ -36,6 +36,7 @@ export default function App() {
 
   const resolveFinalLink = async (link: VideoLink, index: number) => {
     setResolvingIndex(index);
+
     try {
       const fetchResponse = await fetch(
         "https://vi-eng-alaa-api.vercel.app/api/fetch-url",
@@ -48,17 +49,18 @@ export default function App() {
 
       if (!fetchResponse.ok) {
         const errorData = await fetchResponse.json().catch(() => null);
-        throw new Error(errorData?.details || "فشل الوصول لصفحة المشغل.");
+        throw new Error(errorData?.details || "فشل الوصول للرابط الوسيط.");
       }
 
       const data = await fetchResponse.json();
       const extractedLinks: string[] = data.extractedLinks || [];
+      const candidateLinks: string[] = data.candidateLinks || [];
 
-      if (!extractedLinks.length) {
-        throw new Error("لم يتم العثور على رابط فيديو مباشر.");
+      const finalUrl = extractedLinks[0] || candidateLinks[0];
+
+      if (!finalUrl) {
+        throw new Error("لم يتم العثور على رابط فيديو مباشر أو رابط وسيط صالح.");
       }
-
-      const finalUrl = extractedLinks[0];
 
       setLinks((prev) =>
         prev.map((item, i) =>
@@ -67,14 +69,14 @@ export default function App() {
                 ...item,
                 url: finalUrl,
                 proxyUrl: finalUrl,
-                isResolved: true,
+                isResolved: extractedLinks.length > 0,
               }
             : item
         )
       );
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "حدث خطأ أثناء استخراج الرابط المباشر.");
+      setError(err.message || "حدث خطأ أثناء استخراج الرابط النهائي.");
     } finally {
       setResolvingIndex(null);
     }
@@ -99,7 +101,13 @@ export default function App() {
           title: "رابط مشغل مباشر",
           url,
           type: "stream",
-          provider: new URL(url).hostname.replace("www.", ""),
+          provider: (() => {
+            try {
+              return new URL(url).hostname.replace("www.", "");
+            } catch {
+              return "unknown";
+            }
+          })(),
         };
 
         setLinks([dummyLink]);
@@ -123,12 +131,13 @@ export default function App() {
 
       const data = await fetchResponse.json();
       const extractedLinks: string[] = data.extractedLinks || [];
+      const candidateLinks: string[] = data.candidateLinks || [];
 
-      if (!extractedLinks.length) {
-        throw new Error("لم يتم العثور على روابط فيديو مباشرة.");
+      if (!extractedLinks.length && !candidateLinks.length) {
+        throw new Error("لم يتم العثور على روابط فيديو مباشرة أو روابط وسيطة.");
       }
 
-      const parsedLinks: VideoLink[] = extractedLinks.map((item, idx) => ({
+      const directParsed: VideoLink[] = extractedLinks.map((item, idx) => ({
         title: `رابط مباشر ${idx + 1}`,
         url: item,
         proxyUrl: item,
@@ -143,7 +152,24 @@ export default function App() {
         isResolved: true,
       }));
 
-      setLinks(parsedLinks);
+      const candidateParsed: VideoLink[] = candidateLinks
+        .filter((item) => !extractedLinks.includes(item))
+        .map((item, idx) => ({
+          title: `رابط وسيط ${idx + 1}`,
+          url: item,
+          proxyUrl: item,
+          type: "stream",
+          provider: (() => {
+            try {
+              return new URL(item).hostname.replace("www.", "");
+            } catch {
+              return "unknown";
+            }
+          })(),
+          isResolved: false,
+        }));
+
+      setLinks([...directParsed, ...candidateParsed]);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "حدث خطأ غير متوقع.");
@@ -200,8 +226,8 @@ export default function App() {
             transition={{ delay: 0.1 }}
             className="text-white/60 text-lg mb-10 max-w-2xl mx-auto"
           >
-            ضع رابط الفيلم أو المسلسل من مواقع مثل Alaa للحصول على روابط مشاهدة
-            وتحميل نظيفة وبدون إعلانات.
+            ضع رابط الفيلم أو المسلسل للحصول على روابط مشاهدة وتحميل نظيفة
+            وبدون إعلانات.
           </motion.p>
 
           <motion.div
@@ -218,7 +244,7 @@ export default function App() {
                   type="text"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder="ضع الرابط هنا... https://mycima.red/..."
+                  placeholder="ضع الرابط هنا... https://example.com/..."
                   className="flex-1 bg-transparent border-none focus:ring-0 px-4 py-3 text-lg outline-none placeholder:text-white/20 text-right"
                   onKeyDown={(e) => e.key === "Enter" && extractLinks()}
                 />
@@ -271,7 +297,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold flex items-center gap-2">
                   <CheckCircle2 className="text-emerald-500 w-6 h-6" />
-                  تم العثور على {links.length} رابط مباشر
+                  تم العثور على {links.length} رابط
                 </h3>
               </div>
 
@@ -286,24 +312,12 @@ export default function App() {
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                            link.type === "stream"
-                              ? "bg-blue-500/20 text-blue-400"
-                              : "bg-emerald-500/20 text-emerald-400"
-                          }`}
-                        >
-                          {link.type === "stream" ? (
-                            <Play className="w-5 h-5" />
-                          ) : (
-                            <Download className="w-5 h-5" />
-                          )}
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-500/20 text-blue-400">
+                          <Play className="w-5 h-5" />
                         </div>
                         <div>
                           <h4 className="font-bold text-white/90 line-clamp-1">
-                            {link.season && `موسم ${link.season} `}
-                            {link.episode && `حلقة ${link.episode} `}
-                            {!link.season && !link.episode && link.title}
+                            {link.title}
                           </h4>
                           <div className="flex items-center gap-2 text-xs text-white/40 mt-1">
                             {link.provider && (
@@ -311,13 +325,14 @@ export default function App() {
                                 {link.provider}
                               </span>
                             )}
-                            {link.quality && (
+                            {link.isResolved ? (
                               <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-bold">
-                                {link.quality}
+                                مباشر
                               </span>
-                            )}
-                            {link.title && (link.season || link.episode) && (
-                              <span className="opacity-60">({link.title})</span>
+                            ) : (
+                              <span className="bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded font-bold">
+                                وسيط
+                              </span>
                             )}
                           </div>
                         </div>
@@ -335,7 +350,7 @@ export default function App() {
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <>
-                              تخطي الإعلانات وجلب الرابط المباشر
+                              محاولة استخراج الرابط المباشر
                               <Play className="w-4 h-4" />
                             </>
                           )}
@@ -348,33 +363,31 @@ export default function App() {
                             rel="noopener noreferrer"
                             className="flex-1 bg-blue-500 hover:bg-blue-400 text-white text-sm font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
                           >
-                            مشاهدة مباشرة (بدون إعلانات)
+                            مشاهدة مباشرة
                             <Play className="w-4 h-4" />
                           </a>
 
                           <a
                             href={link.proxyUrl || link.url}
-                            download={`video-${link.episode || "movie"}.mp4`}
-                            className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                            download
+                            className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                           >
-                            تحميل الفيديو الآن (رابط مباشر)
+                            تحميل الفيديو
                             <Download className="w-5 h-5" />
                           </a>
                         </div>
                       )}
 
                       <div className="flex gap-2">
-                        {!link.isResolved && (
-                          <a
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
-                          >
-                            فتح في صفحة المشغل (قد تحتوي إعلانات)
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        )}
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
+                        >
+                          فتح الرابط
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
 
                         <button
                           onClick={() => copyToClipboard(link.url, index)}
@@ -405,42 +418,7 @@ export default function App() {
                 <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
                   <Tv className="w-10 h-10 text-white/20" />
                 </div>
-                <p className="text-white/40">أدخل الرابط أعلاه لبدء استخراج الروابط.</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                  <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center mb-4 font-bold">
-                    1
-                  </div>
-                  <h4 className="font-bold mb-2">انسخ الرابط</h4>
-                  <p className="text-xs text-white/40 leading-relaxed">
-                    انسخ رابط الفيلم أو المسلسل (أو حتى رابط المشغل المباشر مثل
-                    govid.live).
-                  </p>
-                </div>
-
-                <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                  <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center mb-4 font-bold">
-                    2
-                  </div>
-                  <h4 className="font-bold mb-2">استخرج الروابط</h4>
-                  <p className="text-xs text-white/40 leading-relaxed">
-                    اضغط على زر "استخراج" وسيقوم التطبيق بتحليل الصفحة وتخطي
-                    الإعلانات.
-                  </p>
-                </div>
-
-                <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
-                  <div className="w-10 h-10 bg-emerald-500/20 text-emerald-400 rounded-lg flex items-center justify-center mb-4 font-bold">
-                    3
-                  </div>
-                  <h4 className="font-bold mb-2">تحميل مباشر</h4>
-                  <p className="text-xs text-white/40 leading-relaxed">
-                    اضغط على "تخطي الإعلانات" ثم "تحميل الفيديو الآن" للحصول على
-                    الملف مباشرة.
-                  </p>
-                </div>
+                <p className="text-white/40">أدخل الرابط أعلاه لبدء الاستخراج.</p>
               </div>
             </motion.div>
           )}
@@ -456,9 +434,7 @@ export default function App() {
                 <Loader2 className="w-20 h-20 text-emerald-500 animate-spin relative z-10" />
               </div>
               <h3 className="text-xl font-bold mb-2">جاري تحليل محتوى الصفحة...</h3>
-              <p className="text-white/40">
-                نتخطى الإعلانات ونبحث عن الروابط المباشرة.
-              </p>
+              <p className="text-white/40">نبحث عن الروابط المباشرة والوسيطة.</p>
             </motion.div>
           )}
         </AnimatePresence>
